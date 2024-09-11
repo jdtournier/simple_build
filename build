@@ -24,26 +24,27 @@ what a Makefile might do, based on simple assumptions:
 
 #### Invoking the oop_build script
 
-Make sure your working directory is the folder containing your code, then 
-simply type `oop_build`. The default action is to build the executables (i.e. 
+Make sure your working directory is the folder containing your code, then
+simply type `oop_build`. The default action is to build the executables (i.e.
 compile the .cpp files and link the resulting objects).
 
 The `oop_build` script also accepts these special commands as the first
 (non-optional) argument:
 
-- `help`: print this help page
-- `run`: build and if successful, run the resulting executable, passing any 
-  remaining arguments to the executable.
+- `help`:  print this help page
+- `run`:   build and if successful, run the resulting executable, passing any
+           remaining arguments to the executable (only useful if project contains
+           a single executable).
 - `clean`: remove all files (the executable and all objects).
 
 The `oop_build` script also accepts the following options (when used with the
 'run' command, these should appear before the 'run' keyword):
 
-- `-debug`: create code suitable for debugging (best to run `oop_build clean`
-  beforehand to clear out any optimised temporaries).
+- `-debug`:   create code suitable for debugging (best to run `oop_build clean`
+              beforehand to clear out any optimised temporaries).
 - `-verbose`: print out additional information about what the script is doing,
-  including the executables detected, each intermediate file's dependencies,
-  whether why each file needs to be updated, and why.
+              including the executables detected, each intermediate file's
+              dependencies, whether why each file needs to be updated, and why.
 
 #### Customising the build
 
@@ -66,19 +67,25 @@ EOD
 #######################################
 
 # set compiler executable:
-CXX=g++
+cxx=g++
 
+# set default C++ language standard:
+std=c++20
 
+# default flags for compiling and linking:
+# these will be included in all builds (release or debug)
 cflags="-Wall"
 ldflags=""
 
-# compiler flags used for optimised build:
+# default compiler flags used for optimised build:
+# these will be included in addition to cflags/ldflags
 cflags_optim="-O2 -DNDEBUG"
 ldflags_optim=""
 
-# compiler flags used for debug build:
-cflags_debug="-fsanitize=address,undefined -g"
-ldflags_debug="-fsanitize=address,undefined -g"
+# default compiler flags used for debug build:
+# these will be included in addition to cflags/ldflags
+cflags_debug="-D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC -g"
+ldflags_debug="-g"
 
 # command to run to display compiler output on error:
 display_error="less -X"
@@ -156,12 +163,13 @@ check_need_update() {
 
 compile() {
   # compile cpp file into object
-  cmd="$CXX $cflags -c $1 -o ${1%.*}.o"
+  cmd="$cxx $cflags -std=$std -I. -c $1 -o ${1%.*}.o"
   report "[CC]" $cmd
   if ! $cmd 2> build_log.txt ; then
     $display_error build_log.txt
     return 1
   fi
+  [ -s build_log.txt ] && cat build_log.txt || :
 }
 
 
@@ -170,30 +178,31 @@ link() {
   # link objects into executable
   exe=$1
   shift
-  cmd="$CXX $ldflags $@ -o $exe"
+  cmd="$cxx $ldflags $@ -o $exe"
   report "[LD]" $cmd
   if ! $cmd 2> build_log.txt ; then
     $display_error build_log.txt
     return 1
   fi
+  [ -s build_log.txt ] && cat build_log.txt || :
 }
 
 
 
 list_cpp_with_main() {
-    for f in *.cpp; do
-        while read line; do
-            if [[ "$line" =~ int\ *main\ *\(.*\) ]]; then 
-               echo "$f"
-               break
-            fi
-        done
-    done
+  for f in *.cpp; do
+    while read line; do
+      if [[ "$line" =~ int\ *main\ *\(.*\) ]]; then 
+        echo "$f"
+        break
+      fi
+    done < $f
+  done
 }
 
 get_executable_names() {
   # figure out target executable based on which cpp file contains main():
-  exe=( $(grep -l 'int *main *(.*)' *.cpp ) )
+  exe=( $(list_cpp_with_main) )
   [ ${#exe[@]} -lt 1 ] && report "WARNING: main() not defined in any cpp file - no executables will be generated"
 
   for f in ${exe[@]}; do
@@ -217,8 +226,12 @@ list_local_headers() {
   # list all included local headers:
   # i.e. matching the line '#include "header.h"
   while read line; do
-      [[ "$line" =~ ^\#include\ *\"([^\"]*)\"  ]] && echo ${BASH_REMATCH[1]}
-  done < "$1"
+    if [[ "$line" =~ ^\#include\ *\"([^\"]*)\"  ]]; then 
+      header=${BASH_REMATCH[1]} || :
+      [[ -f $header ]] || error "no such header file \"$header\" (included from file \"$1\")"
+      echo $header
+    fi
+  done < $1
 }
 
 
@@ -234,16 +247,47 @@ not_in_list() {
 
 list_dependencies() {
   # list all dependencies of cpp or h file, including all headers recursively:
-  headers=$(list_local_headers $1)
+  headers=$(list_local_headers $1) || return 1;
   list="$@ $headers"
   #echo $1 ':' $@ ' -- ' $headers 1>&2
   for f in $headers; do
-    not_in_list $f $@ && list=$(list_dependencies $f $list)
+    not_in_list $f $@ && { list=$(list_dependencies $f $list) || return 1; }
   done
   # sort and remove duplicates:
-  echo $list | xargs -n 1 | sort | uniq | xargs
+  declare -A hash
+  for entry in $list; do
+    hash[$entry]=$entry
+  done
+  
+  echo ${hash[@]}
 }
 
+
+
+recursive_update() {
+  deps=$(list_dependencies $1) || return 1;
+  obj=""
+  for entry in $deps; do
+    if [[ $entry == *.cpp ]]; then
+      echo -n "${entry%.*}.o "
+      cpp_dep=$(list_dependencies $entry) || return 1;
+      check_need_update ${entry%.*}.o $cpp_dep || continue
+      compile $entry
+    else
+      cpp=${entry%.*}.cpp
+      [[ -f $cpp ]] || continue
+      recursive_update $cpp
+    fi
+  done
+}
+
+
+list_temporaries() {
+  for f in $(get_executable_names); do
+    [ -f $f ] && echo $f
+  done
+  find . -name '*.o'
+}
 
 
 #######################################
@@ -262,11 +306,7 @@ while [ $# -gt 0 ]; do
       break;
       ;;
     "clean")
-      exe="$(get_executable_names)"
-      for f in $exe; do
-        [ -f $f ] && rm -vf $f
-      done
-      rm -vf *.o
+      rm -vf $(list_temporaries)
       exit 0
       ;;
     "-debug")
@@ -305,30 +345,22 @@ fi
 
 # guess executable names:
 targets=$(get_executable_names)
-debug target executables detected: $targets
+debug "target executables detected: $targets"
 
-# compile all C++ files into objects first:
-for cpp in *.cpp; do
-  check_need_update ${cpp%.*}.o $(list_dependencies $cpp) && compile $cpp
-done
-
-objects=""
-for obj in *.o; do
-  contains ${obj%.o} $targets || objects="$objects $obj"
-done
-
-# link all objects into targets:
 for exe in $targets; do
-  check_need_update $exe ${exe}.o $objects && link $exe ${exe}.o $objects
+  objects=$(recursive_update $exe.cpp)
+  check_need_update $exe $objects || continue
+  link $exe $objects
 done
+
+
 
 # if requested, run command with remaining arguments:
 if [ $run -eq 1 ]; then
-  echo "[RUN] ./exe $@"
+  exe=( $targets )
+  [ ${#exe[@]} == 1 ] || { echo ERROR: too many executables for -run option; exit 1; }
+  echo "[RUN] ./${exe[0]} $@"
   echo "----------------------------------------------"
-  ./$exe "$@"
+  ./${exe[0]} "$@"
 fi
 
-
-# return true, otherwise can get erroneous non-zero exit codes:
-true
