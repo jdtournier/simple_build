@@ -77,8 +77,8 @@ cflags_optim="-O2 -DNDEBUG"
 ldflags_optim=""
 
 # compiler flags used for debug build:
-cflags_debug="-g"
-ldflags_debug="-g"
+cflags_debug="-fsanitize=address,undefined -g"
+ldflags_debug="-fsanitize=address,undefined -g"
 
 # command to run to display compiler output on error:
 display_error="less -X"
