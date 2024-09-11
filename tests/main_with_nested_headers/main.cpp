@@ -1,5 +1,5 @@
 #include <iostream>
-#include "header.h"
+#include "func.h"
 
 int main (int argc, char* argv[])
 {
