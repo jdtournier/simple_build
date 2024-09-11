@@ -101,6 +101,9 @@ set -e
 
 run=0
 verbose=0
+targets=()
+declare -A deps
+declare -A headers
 
 # load user-specific defaults if present:
 if [ -f settings.sh ]; then
@@ -189,27 +192,26 @@ link() {
 
 
 
-list_cpp_with_main() {
-  for f in *.cpp; do
-    while read line; do
-      if [[ "$line" =~ int\ *main\ *\(.*\) ]]; then 
-        echo "$f"
-        break
-      fi
-    done < $f
-  done
+contains_main() {
+  while read line; do
+    if [[ "$line" =~ int\ *main\ *\(.*\) ]]; then 
+      return 0
+    fi
+  done < $f
+  return 1
 }
 
-get_executable_names() {
+
+
+get_targets() {
   # figure out target executable based on which cpp file contains main():
-  exe=( $(list_cpp_with_main) )
-  [ ${#exe[@]} -lt 1 ] && report "WARNING: main() not defined in any cpp file - no executables will be generated"
-
-  for f in ${exe[@]}; do
-    echo -n "${f%.cpp} "
+  [ ${#targets[@]} -gt 0 ] && return;
+  for f in *.cpp; do
+    contains_main $f && targets+=( ${f%.cpp} )
   done
-  echo ""
 }
+
+
 
 contains() {
   tocheck=$1
@@ -227,17 +229,25 @@ list_local_headers() {
   # i.e. matching the line '#include "header.h"
   while read line; do
     if [[ "$line" =~ ^\#include\ *\"([^\"]*)\"  ]]; then 
-      header=${BASH_REMATCH[1]} || :
-      [[ -f $header ]] || error "no such header file \"$header\" (included from file \"$1\")"
-      echo $header
+      f=${BASH_REMATCH[1]} || :
+      [[ -f $f ]] || error "no such header file \"$f\" (included from file \"$1\")"
+      headers[$1]="${headers[$1]} $f"
     fi
   done < $1
+
+  #remove duplicates:
+  local hash
+  declare -A hash
+  local entry
+  for entry in ${headers[$1]}; do hash[$entry]="x"; done
+  headers[$1]=${!hash[@]}
 }
 
 
 not_in_list() {
   match=$1
   shift
+  local entry
   for entry in $@; do 
     [ $entry == $match ] && return 1
   done
@@ -247,31 +257,33 @@ not_in_list() {
 
 list_dependencies() {
   # list all dependencies of cpp or h file, including all headers recursively:
-  headers=$(list_local_headers $1) || return 1;
-  list="$@ $headers"
-  #echo $1 ':' $@ ' -- ' $headers 1>&2
+  list_local_headers $1
+  local list
+  list="$@ ${headers[$1]}"
   for f in $headers; do
-    not_in_list $f $@ && { list=$(list_dependencies $f $list) || return 1; }
+    not_in_list $f $@ || continue
+    list_dependencies $f $list
+    list+=" ${deps[$f]}"
   done
-  # sort and remove duplicates:
+
+  # remove duplicates:
+  local hash
+  local entry
   declare -A hash
-  for entry in $list; do
-    hash[$entry]=$entry
-  done
-  
-  echo ${hash[@]}
+  for entry in $list; do hash[$entry]="x"; done
+  deps[$1]="${!hash[@]}"
 }
 
 
 
 recursive_update() {
-  deps=$(list_dependencies $1) || return 1;
-  obj=""
-  for entry in $deps; do
+  list_dependencies $1
+  local entry
+  for entry in ${deps[$1]}; do
     if [[ $entry == *.cpp ]]; then
-      echo -n "${entry%.*}.o "
-      cpp_dep=$(list_dependencies $entry) || return 1;
-      check_need_update ${entry%.*}.o $cpp_dep || continue
+      objects+="${entry%.*}.o "
+      list_dependencies $entry
+      check_need_update ${entry%.*}.o ${deps[$entry]} || continue
       compile $entry
     else
       cpp=${entry%.*}.cpp
@@ -282,9 +294,12 @@ recursive_update() {
 }
 
 
+
 list_temporaries() {
-  for f in $(get_executable_names); do
+  get_targets
+  for f in $targets; do
     [ -f $f ] && echo $f
+    [ -f $f.exe ] && echo $f.exe
   done
   find . -name '*.o'
 }
@@ -344,11 +359,15 @@ fi
 #######################################
 
 # guess executable names:
-targets=$(get_executable_names)
-debug "target executables detected: $targets"
+get_targets
+[ ${#targets[@]} -lt 1 ] && report "WARNING: main() not defined in any cpp file - no executables will be generated"
 
-for exe in $targets; do
-  objects=$(recursive_update $exe.cpp)
+debug "target executables detected: ${targets[@]}"
+
+
+for exe in ${targets[@]}; do
+  objects=""
+  recursive_update $exe.cpp
   check_need_update $exe $objects || continue
   link $exe $objects
 done
@@ -357,10 +376,9 @@ done
 
 # if requested, run command with remaining arguments:
 if [ $run -eq 1 ]; then
-  exe=( $targets )
-  [ ${#exe[@]} == 1 ] || { echo ERROR: too many executables for -run option; exit 1; }
-  echo "[RUN] ./${exe[0]} $@"
-  echo "----------------------------------------------"
-  ./${exe[0]} "$@"
+  [ ${#targets[@]} == 1 ] || error "too many executables for -run option"
+  report "[RUN] ./${targets[0]} $@"
+  report "----------------------------------------------"
+  ./${targets[0]} "$@"
 fi
 
