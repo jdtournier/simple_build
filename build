@@ -297,7 +297,7 @@ recursive_update() {
 
 list_temporaries() {
   get_targets
-  for f in $targets; do
+  for f in ${targets[@]}; do
     [ -f $f ] && echo $f
     [ -f $f.exe ] && echo $f.exe
   done
