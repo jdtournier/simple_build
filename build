@@ -33,8 +33,9 @@ The `oop_build` script also accepts these special commands as the first
 
 - `help`:  print this help page
 - `run`:   build and if successful, run the resulting executable, passing any
-           remaining arguments to the executable (only useful if project contains
-           a single executable).
+           remaining arguments to the executable. Note that if the projet
+           includes multiple executables, each executable will be invoked in
+           turn with the arguments provided.
 - `clean`: remove all files (the executable and all objects).
 
 The `oop_build` script also accepts the following options (when used with the
@@ -100,10 +101,12 @@ display_error="less -X"
 set -e
 
 run=0
+clean=0
 verbose=0
 targets=()
 declare -A deps
 declare -A headers
+declare -A objects
 
 # load user-specific defaults if present:
 if [ -f settings.sh ]; then
@@ -146,19 +149,19 @@ check_need_update() {
 
   # target exists?
   if [ ! -f $dest ]; then
-    debug $dest does not exist - needs update
+    debug "- $dest does not exist - needs update"
     return 0
   fi
 
   # target older than dependencies?
   for n in $@; do
     if [ $dest -ot $n ]; then
-      debug $dest is older than dependency $n - needs update
+      debug "- $dest is older than dependency $n - needs update"
       return 0
     fi
   done
 
-  debug $dest is already up to date
+  debug "- $dest is already up to date"
   # target is up to date: return non-zero exit code
   return 1
 }
@@ -179,6 +182,7 @@ compile() {
 
 link() {
   # link objects into executable
+  local exe
   exe=$1
   shift
   cmd="$cxx $ldflags $@ -o $exe"
@@ -206,42 +210,13 @@ contains_main() {
 get_targets() {
   # figure out target executable based on which cpp file contains main():
   [ ${#targets[@]} -gt 0 ] && return;
+  shopt -s nullglob
   for f in *.cpp; do
     contains_main $f && targets+=( ${f%.cpp} )
   done
 }
 
 
-
-contains() {
-  tocheck=$1
-  shift
-  for entry in $@; do
-    [ $entry == $tocheck ] && return 0
-  done
-  return 1
-}
-
-
-
-list_local_headers() {
-  # list all included local headers:
-  # i.e. matching the line '#include "header.h"
-  while read line; do
-    if [[ "$line" =~ ^\#include\ *\"([^\"]*)\"  ]]; then 
-      f=${BASH_REMATCH[1]} || :
-      [[ -f $f ]] || error "no such header file \"$f\" (included from file \"$1\")"
-      headers[$1]="${headers[$1]} $f"
-    fi
-  done < $1
-
-  #remove duplicates:
-  local hash
-  declare -A hash
-  local entry
-  for entry in ${headers[$1]}; do hash[$entry]="x"; done
-  headers[$1]=${!hash[@]}
-}
 
 
 not_in_list() {
@@ -255,54 +230,68 @@ not_in_list() {
 }
 
 
-list_dependencies() {
-  # list all dependencies of cpp or h file, including all headers recursively:
-  list_local_headers $1
-  local list
-  list="$@ ${headers[$1]}"
-  for f in $headers; do
-    not_in_list $f $@ || continue
-    list_dependencies $f $list
-    list+=" ${deps[$f]}"
-  done
 
-  # remove duplicates:
-  local hash
-  local entry
-  declare -A hash
-  for entry in $list; do hash[$entry]="x"; done
-  deps[$1]="${!hash[@]}"
+list_local_headers() {
+  [ -z "${headers[$1]}" ] || return 0
+  # list all included local headers:
+  # i.e. matching the line '#include "header.h"
+  while read line; do
+    if [[ "$line" =~ ^\#include\ *\"([^\"]*)\" ]]; then 
+      f=${BASH_REMATCH[1]} || :
+      [[ -f $f ]] || error "no such header file \"$f\" (included from file \"$1\")"
+      not_in_list $f ${headers[$1]} && headers[$1]+="$f " || :
+    fi
+  done < $1
 }
 
 
 
-recursive_update() {
+list_dependencies() {
+  [ -z "${deps[$1]}" ] || return 0
+  # list all dependencies of cpp or h file, including all headers recursively:
+  local f
+  local h
+  list_local_headers $1
+  deps[$1]="$1 "
+  for f in ${headers[$1]}; do
+    not_in_list $f ${deps[$1]} && deps[$1]+="$f " || :
+    list_dependencies $f
+    for h in ${deps[$f]}; do
+      not_in_list $h ${deps[$1]} && deps[$1]+="$h " || :
+    done
+  done
+
+}
+
+
+
+remove_duplicate_objects() {
+  local hash
+  local entry
+  declare -A hash
+  for entry in ${objects[$1]}; do hash[$entry]="x"; done
+  objects[$1]="${!hash[@]}"
+}
+
+
+
+scan_deps_for_target() {
   list_dependencies $1
   local entry
   for entry in ${deps[$1]}; do
     if [[ $entry == *.cpp ]]; then
-      objects+="${entry%.*}.o "
       list_dependencies $entry
-      check_need_update ${entry%.*}.o ${deps[$entry]} || continue
-      compile $entry
+      objects[$exe]="${objects[$exe]} $entry"
     else
       cpp=${entry%.*}.cpp
       [[ -f $cpp ]] || continue
-      recursive_update $cpp
+      not_in_list $cpp ${objects[$exe]} || continue
+      scan_deps_for_target $cpp
     fi
   done
 }
 
 
-
-list_temporaries() {
-  get_targets
-  for f in ${targets[@]}; do
-    [ -f $f ] && echo $f
-    [ -f $f.exe ] && echo $f.exe
-  done
-  find . -name '*.o'
-}
 
 
 #######################################
@@ -321,8 +310,7 @@ while [ $# -gt 0 ]; do
       break;
       ;;
     "clean")
-      rm -vf $(list_temporaries)
-      exit 0
+      clean=1
       ;;
     "-debug")
       cflags_optim="$cflags_debug"
@@ -338,20 +326,13 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-cflags="$cflags $cflags_optim"
-ldflags="$ldflags $ldflags_optim"
+cflags+=" $cflags_optim"
+ldflags+=" $ldflags_optim"
 
 
-if ! ls *.cpp >/dev/null 2>&1; then
-  cat <<'EOD'
 
-ERROR: no *.cpp files found in current folder!
 
-Type `oop_build help` for detailed usage
 
-EOD
-  exit 1
-fi
 
 
 #######################################
@@ -365,20 +346,47 @@ get_targets
 debug "target executables detected: ${targets[@]}"
 
 
+
+# recursive scan of included headers to figure out dependency tree:
 for exe in ${targets[@]}; do
-  objects=""
-  recursive_update $exe.cpp
-  check_need_update $exe $objects || continue
-  link $exe $objects
+  scan_deps_for_target $exe.cpp
+  remove_duplicate_objects $exe
 done
+
+
+
+# compile and link all targets (unless cleaning), 
+# and collate list of temporaries for cleaning:
+tmplist=""
+for exe in ${!objects[@]}; do
+  [ -f $exe ] && tmplist+="$exe "
+  [ -f $exe.exe ] && tmplist+="$exe.exe "
+  objlist=""
+  for cpp in ${objects[$exe]}; do 
+    f=${cpp%.*}.o
+    [ -f $f ] && tmplist+="$f "
+    objlist+="$f "
+    [ $clean == 0 ] && check_need_update ${cpp%.*}.o ${deps[$cpp]} && compile $cpp
+  done
+  [ $clean == 0 ] && check_need_update $exe $objlist && link $exe $objlist
+done
+
+
+# if cleaning, remove all temporaries:
+if [ $clean == 1 ]; then
+  rm -vf $tmplist
+  exit 0
+fi
 
 
 
 # if requested, run command with remaining arguments:
 if [ $run -eq 1 ]; then
-  [ ${#targets[@]} == 1 ] || error "too many executables for -run option"
-  report "[RUN] ./${targets[0]} $@"
-  report "----------------------------------------------"
-  ./${targets[0]} "$@"
+  for exe in ${targets[@]}; do
+    report "[RUN] ./$exe $@"
+    report "----------------------------------------------"
+    ./$exe $@
+    report "----------------------------------------------"
+  done
 fi
 
