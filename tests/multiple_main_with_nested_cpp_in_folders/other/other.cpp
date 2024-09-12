@@ -1,6 +1,7 @@
 #include "other/other.h"
+#include "other/nested_other.h"
 
 std::string other ()
 {
-  return "some other output";
+  return "output of nested_other(): " + nested_other();
 }

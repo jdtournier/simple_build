@@ -1,6 +1,7 @@
 #include "func/func.h"
+#include "func/nested_func.h"
 
 std::string func ()
 {
-  return "some output";
+  return "output of nested_func(): " + nested_func();
 }
