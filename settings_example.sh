@@ -16,8 +16,8 @@ ldflags_optim=""
 
 # default compiler flags used for debug build:
 # these will be included in addition to cflags/ldflags
-cflags_debug="-fsanitize=address,undefined -g"
-ldflags_debug="-fsanitize=address,undefined -g"
+cflags_debug="-D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC -g"
+ldflags_debug="-g"
 
 # command to run to display compiler output on error:
 display_error="less -X"
