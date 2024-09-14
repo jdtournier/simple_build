@@ -214,7 +214,7 @@ get_targets() {
   [ ${#targets[@]} -gt 0 ] && return;
   shopt -s nullglob
   for f in *.cpp; do
-    contains_main $f && targets+=( ${f%.cpp} )
+    contains_main $f && targets+=( ${f%.cpp} ) || :
   done
 }
 
