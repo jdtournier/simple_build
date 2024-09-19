@@ -30,17 +30,13 @@ The `build` script also accepts these special commands as the first
 (non-optional) argument:
 
 - `help`:  print this help page
-- `run`:   build and if successful, run the resulting executable, passing any
-           remaining arguments to the executable. Note that if the projet
-           includes multiple executables, each executable will be invoked in
-           turn with the arguments provided.
 - `clean`: remove all files (the executable and all objects).
 
-The `build` script also accepts the following options (when used with the
-'run' command, these should appear before the 'run' keyword):
+The `build` script also accepts the following options:
 
-- `-debug`:   create code suitable for debugging (best to run `build clean`
-              beforehand to clear out any optimised temporaries).
+- `-debug`:   create code suitable for debugging (when switching between debug
+              and regular build, make sure to run `build clean` beforehand to
+              clear out all temporary files).
 - `-verbose`: print out additional information about what the script is doing,
               including the executables detected, each intermediate file's
               dependencies, whether why each file needs to be updated, and why.
