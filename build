@@ -1,6 +1,12 @@
 if [[ ! -z "$ZSH_VERSION" ]]; then 
   setopt SH_WORD_SPLIT
-elif [[ -z "$BASH_VERSINFO" ]]; then
+elif [[ ! -z "$BASH_VERSINFO" ]]; then
+  if [[ ${BASH_VERSINFO[0]} < 4 ]]; then 
+    # try running in ZSH:
+    zsh "$0" "$@"
+    exit $?
+  fi
+else
   echo "WARNING: this script is only supported on bash or zsh!"
 fi
 
