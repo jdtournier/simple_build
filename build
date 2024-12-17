@@ -1,4 +1,8 @@
-#!/bin/bash
+if [[ ! -z "$ZSH_VERSION" ]]; then 
+  setopt SH_WORD_SPLIT
+elif [[ -z "$BASH_VERSINFO" ]]; then
+  echo "WARNING: this script is only supported on bash or zsh!"
+fi
 
 function usage {
   cat <<'EOD'
@@ -55,7 +59,6 @@ modify as required, and invoke `build` again.
 
 EOD
 }
-
 
 
 
@@ -146,14 +149,14 @@ check_need_update() {
   debug $dest depends on $@
 
   # target exists?
-  if [ ! -f $dest ]; then
+  if [[ ! -f $dest ]]; then
     debug "- $dest does not exist - needs update"
     return 0
   fi
 
   # target older than dependencies?
   for n in $@; do
-    if [ $dest -ot $n ]; then
+    if [[ $dest -ot $n ]]; then
       debug "- $dest is older than dependency $n - needs update"
       return 0
     fi
@@ -173,7 +176,7 @@ compile() {
     $display_error build_log.txt
     return 1
   fi
-  [ -s build_log.txt ] && cat build_log.txt || :
+  [[ -s build_log.txt ]] && cat build_log.txt || :
 }
 
 
@@ -189,7 +192,7 @@ link() {
     $display_error build_log.txt
     return 1
   fi
-  [ -s build_log.txt ] && cat build_log.txt || :
+  [[ -s build_log.txt ]] && cat build_log.txt || :
 }
 
 
@@ -207,10 +210,14 @@ contains_main() {
 
 get_targets() {
   # figure out target executable based on which cpp file contains main():
-  [ ${#targets[@]} -gt 0 ] && return;
-  shopt -s nullglob
+  [[ ${#targets[@]} -gt 0 ]] && return;
+  if [[ -z "$ZSH_VERSION" ]]; then 
+      shopt -s nullglob
+  else
+      set -o nullglob
+  fi
   for f in *.cpp; do
-    contains_main $f && targets+=( ${f%.cpp} ) || :
+    contains_main $f && targets+=( "${f%.cpp}" ) || :
   done
 }
 
@@ -218,24 +225,33 @@ get_targets() {
 
 
 not_in_list() {
-  match=$1
+  match="$1"
   shift
   local entry
   for entry in $@; do 
-    [ $entry == $match ] && return 1
+    [[ "$entry" == "$match" ]] && return 1
   done
   return 0
 }
 
 
+get_match () {
+  if [[ -z "$ZSH_VERSION" ]]; then 
+    f=${BASH_REMATCH[1]} || :
+  else
+    f=${match[1]} || :
+  fi
+  echo $f
+}
+
 
 list_local_headers() {
-  [ -z "${headers[$1]}" ] || return 0
+  [[ -z "${headers[$1]}" ]] || return 0
   # list all included local headers:
   # i.e. matching the line '#include "header.h"
   while read line; do
     if [[ "$line" =~ ^\#include\ *\"([^\"]*)\" ]]; then 
-      f=${BASH_REMATCH[1]} || :
+      f=$(get_match)
       [[ -f $f ]] || error "no such header file \"$f\" (included from file \"$1\")"
       not_in_list $f ${headers[$1]} && headers[$1]+="$f " || :
     fi
@@ -245,7 +261,7 @@ list_local_headers() {
 
 
 list_dependencies() {
-  [ -z "${deps[$1]}" ] || return 0
+  [[ -z "${deps[$1]}" ]] || return 0
   # list all dependencies of cpp or h file, including all headers recursively:
   local f
   local h
@@ -264,11 +280,15 @@ list_dependencies() {
 
 
 remove_duplicate_objects() {
-  local hash
+  local map
   local entry
-  declare -A hash
-  for entry in ${objects[$1]}; do hash[$entry]="x"; done
-  objects[$1]="${!hash[@]}"
+  declare -A map
+  for entry in ${objects[$1]}; do map[$entry]="x"; done
+  if [[ -z "$ZSH_VERSION" ]]; then 
+    objects[$1]="${!map[@]}"
+  else
+    objects[$1]="${(@k)map}"
+  fi
 }
 
 
@@ -334,7 +354,7 @@ ldflags+=" $ldflags_optim"
 
 # guess executable names:
 get_targets
-[ ${#targets[@]} -lt 1 ] && report "WARNING: main() not defined in any cpp file - no executables will be generated"
+[[ ${#targets[@]} -lt 1 ]] && report "WARNING: main() not defined in any cpp file - no executables will be generated"
 
 debug "target executables detected: ${targets[@]}"
 
@@ -351,22 +371,28 @@ done
 # compile and link all targets (unless cleaning), 
 # and collate list of temporaries for cleaning:
 tmplist=""
-for exe in ${!objects[@]}; do
-  [ -f $exe ] && tmplist+="$exe "
-  [ -f $exe.exe ] && tmplist+="$exe.exe "
+if [[ -z "$ZSH_VERSION" ]]; then 
+  obj_targets="${!objects[@]}"
+else
+  obj_targets="${(@k)objects}"
+fi
+
+for exe in ${obj_targets}; do
+  [[ -f $exe ]] && tmplist+="$exe "
+  [[ -f $exe.exe ]] && tmplist+="$exe.exe "
   objlist=""
   for cpp in ${objects[$exe]}; do 
     f=${cpp%.*}.o
-    [ -f $f ] && tmplist+="$f "
+    [[ -f $f ]] && tmplist+="$f "
     objlist+="$f "
-    [ $clean == 0 ] && check_need_update ${cpp%.*}.o ${deps[$cpp]} && compile $cpp
+    [[ $clean == 0 ]] && check_need_update ${cpp%.*}.o ${deps[$cpp]} && compile $cpp
   done
-  [ $clean == 0 ] && check_need_update $exe $objlist && link $exe $objlist
+  [[ $clean == 0 ]] && check_need_update $exe $objlist && link $exe $objlist
 done
 
 
 # if cleaning, remove all temporaries:
-if [ $clean == 1 ]; then
+if [[ $clean == 1 ]]; then
   rm -vf $tmplist
   exit 0
 fi
