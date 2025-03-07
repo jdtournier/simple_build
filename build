@@ -272,7 +272,7 @@ list_local_headers() {
   # list all included local headers:
   # i.e. matching the line '#include "header.h"
   while read line; do
-    if [[ "$line" =~ ^\#include\ *\"([^\"]*)\" ]]; then 
+    if [[ "$line" =~ ^[[:space:]]*\#[[:space:]]*include[[:space:]]*\"([^\"]*)\" ]]; then 
       f=$(get_match)
       [[ -f $f ]] || error "no such header file \"$f\" (included from file \"$1\")"
       not_in_list $f ${headers[$1]} && headers[$1]+="$f " || :
