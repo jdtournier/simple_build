@@ -95,7 +95,7 @@ EOD
 cxx=${CXX:-g++}
 
 # set default C++ language standard:
-std=c++20
+std=${CXXSTD:-c++20}
 
 # default flags for compiling and linking:
 # these will be included in all builds (release or debug)
