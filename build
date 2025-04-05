@@ -51,13 +51,24 @@ Make sure your working directory is the folder containing your code, then
 simply type `build`. The default action is to build the executables (i.e.
 compile the .cpp files and link the resulting objects).
 
-The `build` script also accepts these special commands as the first
-(non-optional) argument:
+The `build` script accepts these special commands as the first argument:
 
 - `help`:    print this help page
 - `clean`:   remove all files (the executable and all objects).
-- `release`: create code suitable for release
-- `debug`:   create code suitable for debugging
+
+If a different argument is provided, the `build` script will try match it to an
+existing build configuration (by default, 'release' or 'debug'). If
+unspecified, the `build` script will default to the 'release' configuration.
+
+Available configurations for this project are:
+
+EOD
+
+for config in ${!description[@]}; do
+  echo "- \`$config\`: ${description[$config]}"
+done
+
+  cat <<'EOD'
 
 The `build` script also accepts the following options:
 
@@ -67,16 +78,25 @@ The `build` script also accepts the following options:
 
 #### Customising the build
 
-Overriding the default compiler (`g++`) can be done by setting the `CXX`
-environment variable, e.g.:
-
-    $ CXX=clang++ build
-
 If you need to override the default settings (compiler executable, provide
 non-default or additional include locations, etc), place those settings in the
 `settings.sh` file. An example such file is provided in the
 `settings_example.sh`; you can simply copy this file and name it `settings.sh`,
 modify as required, and invoke `build` again.
+
+It is also possible to override some settings using environment variables,
+including:
+
+- `CXX`:        override the default compiler (default: `g++`)
+- `CXXSTD`:     override the default version of the C++ standard (default:
+                `c++17`) 
+- `NJOBS`:      override the default number of concurrent compile jobs
+                (default: as reported by `nproc`)
+
+For example:
+
+    $ CXX=clang++ NJOBS=4 build
+
 
 EOD
 }
@@ -96,21 +116,31 @@ cxx=${CXX:-g++}
 # set default C++ language standard:
 std=${CXXSTD:-c++17}
 
+declare -A description
 declare -A cflags
 declare -A ldflags
 
 # compiler flags used for release build:
+description['release']="create build suitable for release"
 cflags['release']="-O2 -DNDEBUG"
 ldflags['release']=""
 
 
 # compiler flags used for debug build:
+description['debug']="create build suitable for debugging"
 cflags['debug']="-D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC -g"
 ldflags['debug']="-g"
 
 # command to run to display compiler output on error:
 display_error="less -X"
 
+# maximum number of compile jobs to run concurrently:
+# default to number of cores on system, as reported by 'nproc'
+# or 4 if nproc is not found
+njobs=$(nproc) || njobs=4
+
+# override number of jobs using NJOBS environment variable if specified:
+njobs=${NJOBS:-$njobs}
 
 
 #######################################
@@ -187,19 +217,28 @@ check_need_update() {
 
 
 compile() {
+  j=( $(jobs -rp) )
+  while (( ${#j[@]} >= $njobs )); do
+    sleep 0.02
+    j=( $(jobs -rp) )
+  done
+
   # compile cpp file into object
   cmd="$cxx ${cflags[$config]} -std=$std -I. -c $1 -o ${1%.*}.o"
   report "[CC]" $cmd
-  if ! $cmd 2> build_log.txt ; then
-    $display_error build_log.txt
-    return 1
-  fi
-  [[ -s build_log.txt ]] && cat build_log.txt || :
+  ( 
+    if ! $cmd 2> build_log.txt ; then
+      $display_error build_log.txt
+      return 1
+    fi
+    [[ -s build_log.txt ]] && cat build_log.txt || :
+  ) &
 }
 
 
 
 link() {
+  wait $(jobs -p)
   # link objects into executable
   local exe
   exe=$1
@@ -386,6 +425,7 @@ for exe in ${targets[@]}; do
 done
 
 
+debug using $njobs jobs
 
 # compile and link all targets (unless cleaning), 
 # and collate list of temporaries for cleaning:

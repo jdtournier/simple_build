@@ -13,6 +13,7 @@ cflags['debug']="-Wall -D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC -g"
 ldflags['debug']="-g"
 
 # example of additional build config if desired (delete if not necessary):
+description['assert']="create optimised build with asserts enabled"
 cflags['assert']="-Wall -O2 -D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC"
 ldflags['assert']=""
 
