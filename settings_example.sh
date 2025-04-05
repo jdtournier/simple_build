@@ -2,22 +2,20 @@
 cxx=g++
 
 # set default C++ language standard:
-std=c++20
+std=c++17
 
 # default flags for compiling and linking:
-# these will be included in all builds (release or debug)
-cflags="-Wall"
-ldflags=""
-
-# default compiler flags used for optimised build:
-# these will be included in addition to cflags/ldflags
-cflags_optim="-O2 -DNDEBUG"
-ldflags_optim=""
+cflags['release']="-Wall -O2 -DNDEBUG"
+ldflags['release']=""
 
 # default compiler flags used for debug build:
-# these will be included in addition to cflags/ldflags
-cflags_debug="-D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC -g"
-ldflags_debug="-g"
+cflags['debug']="-Wall -D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC -g"
+ldflags['debug']="-g"
+
+# example of additional build config if desired (delete if not necessary):
+cflags['assert']="-Wall -O2 -D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC"
+ldflags['assert']=""
 
 # command to run to display compiler output on error:
 display_error="less -X"
+
