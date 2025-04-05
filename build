@@ -54,14 +54,13 @@ compile the .cpp files and link the resulting objects).
 The `build` script also accepts these special commands as the first
 (non-optional) argument:
 
-- `help`:  print this help page
-- `clean`: remove all files (the executable and all objects).
+- `help`:    print this help page
+- `clean`:   remove all files (the executable and all objects).
+- `release`: create code suitable for release
+- `debug`:   create code suitable for debugging
 
 The `build` script also accepts the following options:
 
-- `-debug`:   create code suitable for debugging (when switching between debug
-              and regular build, make sure to run `build clean` beforehand to
-              clear out all temporary files).
 - `-verbose`: print out additional information about what the script is doing,
               including the executables detected, each intermediate file's
               dependencies, whether why each file needs to be updated, and why.
@@ -95,22 +94,19 @@ EOD
 cxx=${CXX:-g++}
 
 # set default C++ language standard:
-std=${CXXSTD:-c++20}
+std=${CXXSTD:-c++17}
 
-# default flags for compiling and linking:
-# these will be included in all builds (release or debug)
-cflags="-Wall"
-ldflags=""
+declare -A cflags
+declare -A ldflags
 
-# default compiler flags used for optimised build:
-# these will be included in addition to cflags/ldflags
-cflags_optim="-O2 -DNDEBUG"
-ldflags_optim=""
+# compiler flags used for release build:
+cflags['release']="-O2 -DNDEBUG"
+ldflags['release']=""
 
-# default compiler flags used for debug build:
-# these will be included in addition to cflags/ldflags
-cflags_debug="-D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC -g"
-ldflags_debug="-g"
+
+# compiler flags used for debug build:
+cflags['debug']="-D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC -g"
+ldflags['debug']="-g"
 
 # command to run to display compiler output on error:
 display_error="less -X"
@@ -192,7 +188,7 @@ check_need_update() {
 
 compile() {
   # compile cpp file into object
-  cmd="$cxx $cflags -std=$std -I. -c $1 -o ${1%.*}.o"
+  cmd="$cxx ${cflags[$config]} -std=$std -I. -c $1 -o ${1%.*}.o"
   report "[CC]" $cmd
   if ! $cmd 2> build_log.txt ; then
     $display_error build_log.txt
@@ -208,7 +204,7 @@ link() {
   local exe
   exe=$1
   shift
-  cmd="$cxx $ldflags $@ -o $exe"
+  cmd="$cxx ${ldflags[$config]} $@ -o $exe"
   report "[LD]" $cmd
   if ! $cmd 2> build_log.txt ; then
     $display_error build_log.txt
@@ -340,6 +336,9 @@ scan_deps_for_target() {
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    "-verbose")
+      verbose=1
+      ;;
     "help")
       usage
       exit 0
@@ -347,24 +346,22 @@ while [ $# -gt 0 ]; do
     "clean")
       clean=1
       ;;
-    "-debug")
-      cflags_optim="$cflags_debug"
-      ldflags_optim="$ldflags_debug"
-      ;;
-    "-verbose")
-      verbose=1
-      ;;
     *)
-      error "unknown argument \"$1\""
+      if [[ -z ${cflags["$1"]} ]]; then 
+        error "unknown target \"$1\""
+        exit 1
+      fi
+      config="$1"
       ;;
   esac
   shift
 done
 
-cflags+=" $cflags_optim"
-ldflags+=" $ldflags_optim"
 
-
+# default to 'release' build if unspecified:
+if [[ -z $config ]]; then
+  config=release
+fi
 
 
 
@@ -399,11 +396,12 @@ else
   obj_targets="${(@k)objects}"
 fi
 
+
 for exe in ${obj_targets}; do
   [[ -f $exe ]] && tmplist+="$exe "
   [[ -f $exe.exe ]] && tmplist+="$exe.exe "
   objlist=""
-  for cpp in ${objects[$exe]}; do 
+  for cpp in ${objects[$exe]}; do
     f=${cpp%.*}.o
     [[ -f $f ]] && tmplist+="$f "
     objlist+="$f "
