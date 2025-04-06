@@ -1,3 +1,5 @@
+#!/bin/bash 
+
 if [[ ! -z "$ZSH_VERSION" ]]; then 
   setopt SH_WORD_SPLIT
 elif [[ ! -z "$BASH_VERSINFO" ]]; then
@@ -238,7 +240,6 @@ compile() {
 
 
 link() {
-  wait $(jobs -p)
   # link objects into executable
   local exe
   exe=$1
@@ -447,6 +448,7 @@ for exe in ${obj_targets}; do
     objlist+="$f "
     [[ $clean == 0 ]] && check_need_update ${cpp%.*}.o ${deps[$cpp]} && compile $cpp
   done
+  wait $(jobs -p)
   [[ $clean == 0 ]] && check_need_update $exe $objlist && link $exe $objlist
 done
 
