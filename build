@@ -357,7 +357,7 @@ while [ $# -gt 0 ]; do
     "-verbose")
       verbose=1
       ;;
-    "help")
+    "-help")
       usage
       exit 0
       ;;
@@ -365,23 +365,26 @@ while [ $# -gt 0 ]; do
       clean
       exit 0
       ;;
-    *)
-      if [[ -z ${cflags["$1"]} ]]; then 
-        error "unknown target \"$1\""
+    "-config")
+      shift
+      if [[ -z ${cflags["$1"]} ]]; then
+        error "unknown build configuration: \"$1\""
         exit 1
       fi
       config="$1"
+      ;;
+    *)
+      targets+=( "$1" )
       ;;
   esac
   shift
 done
 
 
-# default to 'release' build if unspecified:
+# default to 'debug' build if unspecified:
 if [[ -z $config ]]; then
-  config=release
+  config=debug
 fi
-
 
 # check which config was last used, and clean first if different:
 if [ -s "$LOG" ]; then
