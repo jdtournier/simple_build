@@ -1,17 +1,5 @@
 #!/bin/bash 
 
-if [[ ! -z "$ZSH_VERSION" ]]; then 
-  setopt SH_WORD_SPLIT
-elif [[ ! -z "$BASH_VERSINFO" ]]; then
-  if [[ ${BASH_VERSINFO[0]} < 4 ]]; then 
-    # try running in ZSH:
-    zsh "$0" "$@"
-    exit $?
-  fi
-else
-  echo "WARNING: this script is only supported on bash or zsh!"
-fi
-
 function usage {
   cat <<'EOD'
 
@@ -269,11 +257,7 @@ contains_main() {
 get_targets() {
   # figure out target executable based on which cpp file contains main():
   [[ ${#targets[@]} -gt 0 ]] && return;
-  if [[ -z "$ZSH_VERSION" ]]; then 
-      shopt -s nullglob
-  else
-      set -o nullglob
-  fi
+  shopt -s nullglob
   for f in *.cpp; do
     contains_main $f && targets+=( "${f%.cpp}" ) || :
   done
@@ -293,15 +277,6 @@ not_in_list() {
 }
 
 
-get_match () {
-  if [[ -z "$ZSH_VERSION" ]]; then 
-    f=${BASH_REMATCH[1]} || :
-  else
-    f=${match[1]} || :
-  fi
-  echo $f
-}
-
 
 list_local_headers() {
   [[ -z "${headers[$1]}" ]] || return 0
@@ -309,7 +284,7 @@ list_local_headers() {
   # i.e. matching the line '#include "header.h"
   while read line; do
     if [[ "${line%%//*}" =~ ^[[:space:]]*\#[[:space:]]*include[[:space:]]*\"([^\"]*)\" ]]; then 
-      f=$(get_match)
+      f=${BASH_REMATCH[1]} || :
       [[ -f $f ]] || error "no such header file \"$f\" (included from file \"$1\")"
       not_in_list $f ${headers[$1]} && headers[$1]+="$f " || :
     fi
@@ -342,11 +317,7 @@ remove_duplicate_objects() {
   local entry
   declare -A map
   for entry in ${objects[$1]}; do map[$entry]="x"; done
-  if [[ -z "$ZSH_VERSION" ]]; then 
-    objects[$1]="${!map[@]}"
-  else
-    objects[$1]="${(@k)map}"
-  fi
+  objects[$1]="${!map[@]}"
 }
 
 
@@ -431,11 +402,7 @@ debug using $njobs jobs
 # compile and link all targets (unless cleaning), 
 # and collate list of temporaries for cleaning:
 tmplist=""
-if [[ -z "$ZSH_VERSION" ]]; then 
-  obj_targets="${!objects[@]}"
-else
-  obj_targets="${(@k)objects}"
-fi
+obj_targets="${!objects[@]}"
 
 
 for exe in ${obj_targets}; do
