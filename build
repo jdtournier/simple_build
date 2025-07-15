@@ -221,6 +221,7 @@ compile() {
   done
 
   # compile cpp file into object
+  mkdir -p $(dirname $2)
   cmd="$cxx ${cflags[$config]} -std=$std -I. -c $1 -o $2"
 
   report "[CC]" $cmd
@@ -236,6 +237,7 @@ link() {
   local exe
   exe=$1
   shift
+  mkdir -p $(dirname $exe)
   cmd="$cxx ${ldflags[$config]} $@ -o $exe"
   report "[LD]" $cmd
   $cmd || error "command \"$cmd\" failed" 
@@ -341,12 +343,11 @@ scan_deps_for_target() {
 
 
 clean() {
-  to_delete=( $(find . -name "*.o") )
-  for f in *.cpp; do
-    [ -x "${f%.cpp}" ] && to_delete+=( "${f%.cpp}" )
+  shopt -s nullglob
+  for b in build.*; do
+    echo "removing build folder \"$b\"..."
+    rm -rf $b
   done
-  [ -f "$LOG" ] && to_delete+=( "$LOG" )
-  [ ${#to_delete[@]} -gt 0 ] && rm -vrf "${to_delete[@]}"
 }
 
 
@@ -424,19 +425,18 @@ for exe in ${targets[@]}; do
 done
 
 
-debug using $njobs jobs
 
 # compile and link all targets (unless cleaning):
+buildir="build.$config"
 for exe in ${targets[@]}; do
   objlist=""
   for cpp in ${objects[$exe]}; do
-    obj="${cpp%.*}.o"
+    obj="$buildir/${cpp%.*}.o"
     objlist+="$obj "
-    check_need_update "$obj" ${deps[$cpp]} || compile $cpp $obj
+    check_need_update "$buildir/${cpp%.*}.o" ${deps[$cpp]} || compile $cpp $obj
   done
   wait $(jobs -p)
-  check_need_update "$exe" $objlist || link $exe $objlist
+  check_need_update "$buildir/$exe" $objlist || link $buildir/$exe $objlist
 done
-
 
 
