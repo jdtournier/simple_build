@@ -140,7 +140,6 @@ njobs=${NJOBS:-$njobs}
 # terminate script on error:
 set -e
 
-clean=0
 verbose=0
 targets=()
 declare -A deps
@@ -195,20 +194,20 @@ check_need_update() {
   # target exists?
   if [[ ! -f $dest ]]; then
     debug "- $dest does not exist - needs update"
-    return 0
+    return 1
   fi
 
   # target older than dependencies?
   for n in $@; do
     if [[ $dest -ot $n ]]; then
       debug "- $dest is older than dependency $n - needs update"
-      return 0
+      return 1
     fi
   done
 
   debug "- $dest is already up to date"
   # target is up to date: return non-zero exit code
-  return 1
+  return 0
 }
 
 
@@ -220,7 +219,7 @@ compile() {
   done
 
   # compile cpp file into object
-  cmd="$cxx ${cflags[$config]} -std=$std -I. -c $1 -o ${1%.*}.o"
+  cmd="$cxx ${cflags[$config]} -std=$std -I. -c $1 -o $2"
 
   report "[CC]" $cmd
   ( 
@@ -339,6 +338,15 @@ scan_deps_for_target() {
 
 
 
+clean() {
+  to_delete=( $(find . -name "*.o") )
+  for f in *.cpp; do
+    [ -x "${f%.cpp}" ] && to_delete+=( "${f%.cpp}" )
+  done
+  [ -f "$LOG" ] && to_delete+=( "$LOG" )
+  [ ${#to_delete[@]} -gt 0 ] && rm -vrf "${to_delete[@]}"
+}
+
 
 #######################################
 # CMDLINE PARSING
@@ -354,7 +362,8 @@ while [ $# -gt 0 ]; do
       exit 0
       ;;
     "clean")
-      clean=1
+      clean
+      exit 0
       ;;
     *)
       if [[ -z ${cflags["$1"]} ]]; then 
@@ -412,30 +421,17 @@ done
 
 debug using $njobs jobs
 
-# compile and link all targets (unless cleaning), 
-# and collate list of temporaries for cleaning:
-tmplist=""
-obj_targets="${!objects[@]}"
-
-
-for exe in ${obj_targets}; do
-  [[ -f $exe ]] && tmplist+="$exe "
-  [[ -f $exe.exe ]] && tmplist+="$exe.exe "
+# compile and link all targets (unless cleaning):
+for exe in ${targets[@]}; do
   objlist=""
   for cpp in ${objects[$exe]}; do
-    f=${cpp%.*}.o
-    [[ -f $f ]] && tmplist+="$f "
-    objlist+="$f "
-    [[ $clean == 0 ]] && check_need_update ${cpp%.*}.o ${deps[$cpp]} && compile $cpp
+    obj="${cpp%.*}.o"
+    objlist+="$obj "
+    check_need_update "$obj" ${deps[$cpp]} || compile $cpp $obj
   done
   wait $(jobs -p)
-  [[ $clean == 0 ]] && check_need_update $exe $objlist && link $exe $objlist
+  check_need_update "$exe" $objlist || link $exe $objlist
 done
 
 
-# if cleaning, remove all temporaries:
-if [[ $clean == 1 ]]; then
-  rm -vf $tmplist
-  exit 0
-fi
 
