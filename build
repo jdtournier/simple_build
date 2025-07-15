@@ -29,7 +29,7 @@ what a Makefile might do, based on simple assumptions:
   name (but expected suffix for a header file), and this header must be
   `#include`d in another dependency for that executable (header or cpp). Otherwise,
   the corresponding object file will not be included in the list when linking
-  the target executable. 
+  the target executable.
 
   For example, if `main.cpp` relies on functionality in `utils.cpp`, then the
   `utils.h` header must exist and be `#include`d by `main.cpp` (or one of the other
@@ -41,14 +41,22 @@ Make sure your working directory is the folder containing your code, then
 simply type `build`. The default action is to build the executables (i.e.
 compile the .cpp files and link the resulting objects).
 
-The `build` script accepts these special commands as the first argument:
+If arguments are provided, they will override the default targets. The `build`
+script will try to compile the corresponding executables.
 
-- `help`:    print this help page
-- `clean`:   remove all files (the executable and all objects).
+As an exception, the special argument `clean` can be provided to remove all
+temporary files (executables and object files),
 
-If a different argument is provided, the `build` script will try match it to an
-existing build configuration (by default, 'release' or 'debug'). If
-unspecified, the `build` script will default to the 'release' configuration.
+The `build` script also accepts the following options:
+
+- `-help`:        print this help page
+
+- `-verbose`:     print out additional information about what the script is
+                  doing, including the executables detected, each intermediate
+                  file's dependencies, whether why each file needs to be
+                  updated, and why.
+
+- `-config name`: specify the build configuration to use (default: `debug`).
 
 Available configurations for this project are:
 
@@ -59,12 +67,6 @@ for config in ${!description[@]}; do
 done
 
   cat <<'EOD'
-
-The `build` script also accepts the following options:
-
-- `-verbose`: print out additional information about what the script is doing,
-              including the executables detected, each intermediate file's
-              dependencies, whether why each file needs to be updated, and why.
 
 #### Customising the build
 
@@ -79,7 +81,7 @@ including:
 
 - `CXX`:        override the default compiler (default: `g++`)
 - `CXXSTD`:     override the default version of the C++ standard (default:
-                `c++17`) 
+                `c++20`) 
 - `NJOBS`:      override the default number of concurrent compile jobs
                 (default: as reported by `nproc`)
 
@@ -104,7 +106,7 @@ EOD
 cxx=${CXX:-g++}
 
 # set default C++ language standard:
-std=${CXXSTD:-c++17}
+std=${CXXSTD:-c++20}
 
 # name of build log file:
 LOG="build_log.txt"
