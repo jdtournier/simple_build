@@ -106,6 +106,9 @@ cxx=${CXX:-g++}
 # set default C++ language standard:
 std=${CXXSTD:-c++17}
 
+# name of build log file:
+LOG="build_log.txt"
+
 declare -A description
 declare -A cflags
 declare -A ldflags
@@ -120,9 +123,6 @@ ldflags['release']=""
 description['debug']="create build suitable for debugging"
 cflags['debug']="-D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC -g"
 ldflags['debug']="-g"
-
-# command to run to display compiler output on error:
-display_error="less -X"
 
 # maximum number of compile jobs to run concurrently:
 # default to number of cores on system, as reported by 'nproc'
@@ -152,7 +152,6 @@ if [ -f settings.sh ]; then
   . settings.sh
 fi
 
-rm -f build_log.txt
 
 
 
@@ -160,21 +159,28 @@ rm -f build_log.txt
 # FUNCTIONS
 #######################################
 
+log() {
+  # print to build log:
+  echo "$@" >> "$LOG"
+}
+
 report() {
   # print to stderr:
-  >&2 echo $@
+  log "$@"
+  >&2 echo "$@"
 }
 
 
 error() {
   # print to stderr and exit:
-  >&2 echo ERROR: $@
+  log "ERROR: $@"
+  >&2 echo ERROR: "$@"
   exit 1
 }
 
 debug() {
   if [ ! $verbose -eq 0 ]; then
-    report '#' $@
+    report "# $@"
   fi
 }
 
@@ -215,13 +221,10 @@ compile() {
 
   # compile cpp file into object
   cmd="$cxx ${cflags[$config]} -std=$std -I. -c $1 -o ${1%.*}.o"
+
   report "[CC]" $cmd
   ( 
-    if ! $cmd 2> build_log.txt ; then
-      $display_error build_log.txt
-      return 1
-    fi
-    [[ -s build_log.txt ]] && cat build_log.txt || :
+    $cmd || error "command \"$cmd\" failed"
   ) &
 }
 
@@ -234,11 +237,7 @@ link() {
   shift
   cmd="$cxx ${ldflags[$config]} $@ -o $exe"
   report "[LD]" $cmd
-  if ! $cmd 2> build_log.txt ; then
-    $display_error build_log.txt
-    return 1
-  fi
-  [[ -s build_log.txt ]] && cat build_log.txt || :
+  $cmd || error "command \"$cmd\" failed" 
 }
 
 
@@ -375,6 +374,20 @@ if [[ -z $config ]]; then
 fi
 
 
+# check which config was last used, and clean first if different:
+if [ -s "$LOG" ]; then
+  while read line; do
+    [[ "$line" == "config: "* ]] && { previous_config="${line#config:\ }"; break; }
+  done < "$LOG"
+  if [ "$previous_config" != $config ]; then
+    report "NOTE: building using different configuration from last invocation - will clean first..."
+    clean
+  fi
+fi
+
+
+rm -f "$LOG"
+log "config: $config"
 
 
 
