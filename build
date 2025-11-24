@@ -221,7 +221,7 @@ compile() {
   done
 
   # compile cpp file into object
-  cmd="$cxx ${cflags[$config]} -std=$std -I. -c $1 -o $2"
+  cmd="$cxx ${cflags[$config]} -std=$std -iquote . -c $1 -o $2"
 
   report "[CC]" $cmd
   ( 
