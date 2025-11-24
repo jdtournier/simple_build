@@ -49,15 +49,17 @@ The `build` script also accepts the following options:
 
 - `-verbose`:     print out additional information about what the script is
                   doing, including the executables detected, each intermediate
-                  file's dependencies, whether why each file needs to be
-                  updated, and why.
+                  file's dependencies, whether each file needs to be updated, 
+                  and why.
 
 - `-config name`: specify the build configuration to use (default: `debug`).
 
 Available configurations for this project are:
 
-- `debug`: create build suitable for debugging
-- `release`: create build suitable for release
+- `debug`: create build suitable for debugging (include debugging symbols, 
+           enable asserts and activate GCC debugging macros) 
+- `release`: create build suitable for release (enable optimisations level 2, 
+             and disable asserts) 
 
 #### Customising the build
 
@@ -72,7 +74,7 @@ including:
 
 - `CXX`:        override the default compiler (default: `g++`)
 - `CXXSTD`:     override the default version of the C++ standard (default:
-                `c++20`) 
+                `c++20`)
 - `NJOBS`:      override the default number of concurrent compile jobs
                 (default: as reported by `nproc`)
 
