@@ -1,4 +1,6 @@
-#!/bin/bash 
+#!/bin/zsh 
+
+setopt SH_WORD_SPLIT
 
 function usage {
   cat <<'EOD'
@@ -62,7 +64,7 @@ Available configurations for this project are:
 
 EOD
 
-for config in ${!description[@]}; do
+for config in ${(@k)description}; do
   line="- \`$config\`: "
   blank="${line//?/ }"
   for token in ${description[$config]}; do
@@ -92,7 +94,7 @@ including:
 - `CXXSTD`:     override the default version of the C++ standard (default:
                 `c++20`)
 - `NJOBS`:      override the default number of concurrent compile jobs
-                (default: as reported by `nproc`)
+                (default: as reported by `nproc` or `sysctl -n hw.logicalcpu`)
 
 For example:
 
@@ -136,9 +138,9 @@ cflags[debug]="-D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC -g"
 ldflags[debug]="-g"
 
 # maximum number of compile jobs to run concurrently:
-# default to number of cores on system, as reported by 'nproc'
-# or 4 if nproc is not found
-njobs=$(nproc) || njobs=4
+# default to number of cores on system, as reported by 'nproc', 
+# 'sysctl -n hw.logicalcpu', or 4 if neither is found
+njobs=$(nproc || sysctl -n hw.logicalcpu) 2>/dev/null || njobs=4
 
 # override number of jobs using NJOBS environment variable if specified:
 njobs=${NJOBS:-$njobs}
@@ -266,7 +268,7 @@ contains_main() {
 get_targets() {
   # figure out target executable based on which cpp file contains main():
   [[ ${#targets[@]} -gt 0 ]] && return;
-  shopt -s nullglob
+  set -o nullglob
   for f in *.cpp; do
     contains_main $f && targets+=( "${f%.cpp}" ) || :
   done
@@ -293,7 +295,7 @@ list_local_headers() {
   # i.e. matching the line '#include "header.h"
   while read line; do
     if [[ "${line%%//*}" =~ ^[[:space:]]*\#[[:space:]]*include[[:space:]]*\"([^\"]*)\" ]]; then 
-      f=${BASH_REMATCH[1]} || :
+      f=${match[1]} || :
       [[ -f $f ]] || error "no such header file \"$f\" (included from file \"$1\")"
       not_in_list $f ${headers[$1]} && headers[$1]+="$f " || :
     fi
@@ -326,7 +328,7 @@ remove_duplicate_objects() {
   local entry
   declare -A map
   for entry in ${objects[$1]}; do map[$entry]="x"; done
-  objects[$1]="${!map[@]}"
+  objects[$1]="${(@k)map}"
 }
 
 
