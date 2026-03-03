@@ -125,15 +125,15 @@ declare -A cflags
 declare -A ldflags
 
 # compiler flags used for release build:
-description['release']="create build suitable for release (enable optimisations level 2, and disable asserts)"
-cflags['release']="-O2 -DNDEBUG"
-ldflags['release']=""
+description[release]="create build suitable for release (enable optimisations level 2, and disable asserts)"
+cflags[release]="-O2 -DNDEBUG"
+ldflags[release]=""
 
 
 # compiler flags used for debug build:
-description['debug']="create build suitable for debugging (include debugging symbols, enable asserts and activate GCC debugging macros)"
-cflags['debug']="-D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC -g"
-ldflags['debug']="-g"
+description[debug]="create build suitable for debugging (include debugging symbols, enable asserts and activate GCC debugging macros)"
+cflags[debug]="-D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC -g"
+ldflags[debug]="-g"
 
 # maximum number of compile jobs to run concurrently:
 # default to number of cores on system, as reported by 'nproc'
