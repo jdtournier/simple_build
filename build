@@ -132,7 +132,7 @@ ldflags[release]=""
 
 # compiler flags used for debug build:
 description[debug]="create build suitable for debugging (include debugging symbols, enable asserts and activate GCC debugging macros)"
-cflags[debug]="-D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC -g"
+cflags[debug]="-D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC -g -Wall"
 ldflags[debug]="-g"
 
 # maximum number of compile jobs to run concurrently:
